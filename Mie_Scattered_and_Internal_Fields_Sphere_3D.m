@@ -18,6 +18,7 @@ clear all;
 close all;
 
 %% Input parameters
+
 read = load('eVe1e2_Ag_JC.txt'); % Read the dielectric function of the particle [energy in eV, epsilon1, epsilon2]
 E0 = 1; % Incident field intensity
 r = 25; % Radius of the particle in nm
