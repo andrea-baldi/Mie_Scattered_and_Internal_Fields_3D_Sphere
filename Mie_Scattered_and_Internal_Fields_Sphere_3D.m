@@ -1,18 +1,20 @@
-% Andrea Baldi, 02/05/2025
-
-% This code first calculates the scattering, extinction and absorption
-% cross-section of a spherical particle and lets you choose at which energy
-% you want to calculate the scattered and internal fields.
-% Then it calculates the scattered and internal fields in a 3D box at the
-% chosen energy using the formalism in Bohren&Huffman. In agreement with
-% the book's system of reference, the incident plane wave propagates along
-% the z direction, with the electric field polarized along the x-axis. The
-% polar angle 'theta', defined as the angle between the scattered vector
-% and the z-axis, spans from 0 degrees (forward scattering) to 180 degrees
-% (back scattering), the azimuthal angle 'phi', defined as the angle
-% between the x-axis and the projection of the scattered vector on the
-% xy-plane, spans from 0 degrees to 360 degrees. The code needs the
-% function "pin_andrea" (eq. 4.47).
+% Andrea Baldi, 06/05/2026
+%
+% Mie-theory calculation for a spherical particle.
+%
+% The script first calculates the scattering, absorption, and extinction
+% cross sections of the particle as a function of photon energy. The user
+% is then prompted to select one energy from the plotted spectrum.
+%
+% At the selected energy, the script calculates the internal electric field
+% inside the particle and the scattered electric field outside the particle
+% in a 3D Cartesian box, following the formalism of Bohren and Huffman.
+%
+% Geometry convention:
+% - the incident plane wave propagates along +z;
+% - the incident electric field is polarized along +x;
+% - theta is the polar angle measured from +z;
+% - phi is the azimuthal angle measured from +x in the xy-plane.
 
 clear all;
 close all;
@@ -20,41 +22,41 @@ close all;
 %% Input parameters
 
 read = load('eVe1e2_Ag_JC.txt'); % Read the dielectric function of the particle [energy in eV, epsilon1, epsilon2]
-E0 = 1; % Incident field intensity
-r = 25; % Radius of the particle in nm
+E0 = 1; % Incident electric field amplitude in V/m
+r = 40; % Radius of the particle in nm
 Emin = 2; % Minimum energy in eV
 Emax = 4; % Maximum energy in eV
 Esteps = 200; % Number of energy steps
 index = 1.333; % Refractive index of the medium
-boxsize = 100; % Size of the 2D area in which the fields are calculated in nm
+boxsize = 100; % Side length of the 3D calculation box in nm
 dx   = 1;      % Voxel side length in nm
 
-%% Does the calculations - no further input necessary, except for one click
+%% Calculate spectra and select energy
 
-%–– Compute mesh so that mesh*dx = box exactly, and mesh is even ––
+% Compute mesh so that mesh*dx = boxsize exactly, with mesh even
 mesh = ceil(boxsize/dx);
 if mod(mesh,2)==1
     mesh = mesh + 1;
 end
-dx = boxsize/mesh;    % adjust dx so mesh*dx == box
+dx = boxsize/mesh;    % adjust dx so mesh*dx == boxsize
 
 % Fundamental constants
 e = 1.60217646e-19; % Elementary charge in SI units
 h = 6.626068e-34; % h in SI units
-c = 2.99792458e8; % Light speed in SI units
+c = 2.99792458e8; % Speed of light in SI units
 eps0 = 8.854187817e-12; % Vacuum permittivity in F/m
 
-%Interpolates the experimental dielectric function
+% Interpolate the experimental dielectric function
 w = (Emin:(Emax-Emin)/Esteps:Emax)';
 e1_read = interp1(read(:,1),read(:,2),w,'spline');
 e2_read = interp1(read(:,1),read(:,3),w,'spline');
 
-%Creates the total permittivity values of the particle and the medium
+% Calculate the complex refractive index of the particle
 n_read = (((e1_read.^2 + e2_read.^2).^(1/2) + e1_read)./2).^(1/2);
 k_read = (((e1_read.^2 + e2_read.^2).^(1/2) - e1_read)./2).^(1/2);
 etot_read = n_read + 1i*k_read;
 m = etot_read ./ index; % Relative refractive index (page 100)
-radius = r*1e-9; % Convertion to meters
+radius = r*1e-9; % Radius in meters
 lambda = h*c./(e*w); % Converts energy in (eV) to wavelength in (m)
 k = 2*pi*index./lambda; % Wavenumber 'k'
 x = k .* radius;  % Size parameter outside the particle (page 86)
@@ -87,15 +89,15 @@ Qsca = Csca./(pi*radius^2);  % Scattering efficiency
 Qext = Cext./(pi*radius^2);  % Extinction efficiency
 Qabs = Cabs./(pi*radius^2);  % Absorption efficiency
 
-% Plot the extinction efficiency and choose the energy value at which the
-% fields will be calculated
+% Plot the scattering, absorption, and extinction efficiencies and select
+% the energy at which to calculate the fields
 figure(1)
 plot(w,Qsca,'b','linewidth',2)
 hold on
 plot(w,Qabs,'r','linewidth',2)
 plot(w,Qext,'k','linewidth',2)
 xlabel('Energy (eV)', 'FontSize', 10 );
-ylabel(['Scattering efficiency of a ',num2str(radius*1E9),' nm radius sphere'],'FontSize',10);
+ylabel(['Efficiencies of a ',num2str(radius*1E9),' nm radius sphere'],'FontSize',10);
 legend('Scattering','Absorption','Extinction')
 title('Select the energy');
 
@@ -116,7 +118,8 @@ mx = m * x; % Size parameter inside the particle
 
 nmax = round(x + 4 * x.^(1/3) + 2); % Maximum order of the vector spherical harmonics using the Wiscombe criterion
 
-% Create voxel-centered grid to avoid the origin (0,0,0)
+% Create an even, voxel-centered grid so that no grid point lies exactly at
+% the origin
 coordx = linspace(-boxsize/2 + dx/2, boxsize/2 - dx/2, mesh);
 coordy = linspace(-boxsize/2 + dx/2, boxsize/2 - dx/2, mesh);
 coordz = linspace(-boxsize/2 + dx/2, boxsize/2 - dx/2, mesh);
@@ -131,7 +134,7 @@ phi3D      = atan2(Y, X); % azimuthal angle phi at any point
 cosPhi3D   = cos(phi3D); % cosine of azimuthal angle phi at any point
 sinPhi3D   = sin(phi3D); % sine of azimuthal angle phi at any point
 
-% Initialize vectors
+% Initialize field-intensity array and Mie coefficient vectors
 I_tot  = zeros(mesh,mesh,mesh);
 En_all = zeros(nmax,1);
 an_all = zeros(nmax,1);
@@ -155,13 +158,13 @@ for n=1:nmax
     mxjnmxdiff = mx.*jnminmx - n.*jnmx;
     xhnxdiff = x.*hnminx - n.*hnx;
     
-    % Calculate the coefficients of the fields inside the particle at the
-    % right wavelength using equation (4.53) with \mu = \mu_l = 1
+    % Calculate the internal-field coefficients at the selected wavelength
+    % using equation (4.53) with \mu = \mu_l = 1
     cn_all(n) = (jnx*xhnxdiff-hnx*xjnxdiff)/(jnmx*xhnxdiff-hnx*mxjnmxdiff);
     dn_all(n) = (m*jnx*xhnxdiff-m*hnx*xjnxdiff)/(m^2*jnmx*xhnxdiff-hnx*mxjnmxdiff);
     
-    % Calculate the scattering coefficients at the right
-    % wavelength using equation (4.53) with \mu = \mu_l = 1
+    % Calculate the scattering coefficients at the selected wavelength
+    % using equation (4.53) with \mu = \mu_l = 1
     an_all(n) = (m^2*jnmx*xjnxdiff-jnx*mxjnmxdiff)/(m^2*jnmx*xhnxdiff-hnx*mxjnmxdiff);
     bn_all(n) = (jnmx*xjnxdiff-jnx*mxjnmxdiff)/(jnmx*xhnxdiff-hnx*mxjnmxdiff);
     
@@ -187,7 +190,7 @@ for px = ix0:mesh % only x ≥ 0
             cosphi   = cosPhi3D(px,py,pz);
             sinphi   = sinPhi3D(px,py,pz);
             
-            % Initialize variables
+            % Initialize field components at this grid point
             E_sca_r = 0; % radial component of the scattered field
             E_sca_t = 0; % polar component of the scattered field
             E_sca_p = 0; % azimuthal component of the scattered field
@@ -274,7 +277,7 @@ for px = ix0:mesh % only x ≥ 0
                 
             end
             
-            % mirror into all four quadrants:
+            % Use mirror symmetry in x and y to fill the remaining quadrants
             I_tot(px,        py,        pz) = Iq;
             I_tot(mesh+1-px, py,        pz) = Iq;
             I_tot(px,        mesh+1-py, pz) = Iq;
@@ -287,7 +290,7 @@ end
 %% Plot the field intensity in the xz plane
 
 % Find the y = 0 index (closest to the center of the box)
-[~, y_center] = min(abs(coordy)); % assuming coordy is defined
+[~, y_center] = min(abs(coordy));
 
 % Extract the xz-slice from the 3D field matrix at y = 0
 I_tot_xz = squeeze(I_tot(:, y_center, :)); % [x, z] slice
@@ -341,7 +344,7 @@ ylabel('|E/E_0|^2')
 title('Field intensity enhancement along z-axis')
 
 figure(4)
-plot(coordz, I_xline / E0^2, '-ok')
+plot(coordx, I_xline / E0^2, '-ok')
 hold on
 xline(r, '--', 'Color', [0.5 0.5 0.5])
 xline(-r, '--', 'Color', [0.5 0.5 0.5])
@@ -373,3 +376,22 @@ P_total_analytical = 0.5 * eps0 * c * index * E0^2 * Cabs(indexplot);
 fprintf('Simulated P_abs = %.4e W\n', P_total);
 fprintf('Analytical P_abs from C_abs = %.4e W\n', P_total_analytical);
 fprintf('Relative error = %.2f%%\n', 100 * abs(P_total - P_total_analytical) / P_total_analytical);
+
+%% Local function
+
+% Function pi_n as described in eq. 4.47 in Bohren and Huffman.
+% Inputs are the order of the vector spherical harmonics, 'n', and the
+% cosine of the polar angle, 'cos(theta)'
+function p=pin_andrea(n,costheta)
+if n==0
+    p=0;
+elseif n==1
+    p=1;
+else
+    q=[0,1];
+    for j=2:n
+        q(j+1) = costheta*q(j)*(2*j-1)/(j-1)-j*q(j-1)/(j-1);
+    end
+    p=q(end);
+end
+end
